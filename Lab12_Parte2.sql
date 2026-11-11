@@ -1,4 +1,203 @@
 -- =====================================================================
+-- Parte 0
+-- =====================================================================
+CREATE TABLE employees (
+emp_no int,
+birth_date date,
+first_name varchar(14),
+last_name varchar(16),
+gender character(1),
+hire_date date,
+dept_no varchar(5),
+from_date date
+);
+CREATE TABLE salaries (
+emp_no int,
+salary int ,
+from_date date,
+to_date date
+);
+
+
+COPY public.employees
+FROM '/tmp/employees.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+COPY public.salaries
+FROM '/tmp/salaries.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+VACUUM ANALYZE public.employees;
+VACUUM ANALYZE public.salaries;
+SELECT
+    (SELECT COUNT(*) FROM public.employees) AS numero_filas,
+    pg_relation_size('public.employees'::regclass) AS tamanio_bytes,
+    pg_size_pretty(
+        pg_relation_size('public.employees'::regclass)
+    ) AS tamanio_legible,
+    relpages AS numero_paginas
+FROM pg_class
+WHERE oid = 'public.employees'::regclass;
+
+SELECT DISTINCT dept_no
+FROM employees
+ORDER BY dept_no;
+
+EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM employees WHERE dept_no = 'd001';
+
+-- =====================================================================
+-- Parte 1
+-- =====================================================================
+
+-- P1.3: 
+SELECT
+    dept_no,
+    COUNT(*) AS cantidad_empleados
+FROM employees
+GROUP BY dept_no
+ORDER BY cantidad_empleados DESC;
+
+
+CREATE TABLE public.employees1 (
+    LIKE public.employees
+)
+PARTITION BY LIST (dept_no);
+
+CREATE TABLE public.employees1_f1
+PARTITION OF public.employees1
+FOR VALUES IN ('d005', 'd009');
+
+CREATE TABLE public.employees1_f2
+PARTITION OF public.employees1
+FOR VALUES IN ('d004', 'd001', 'd002');
+
+CREATE TABLE public.employees1_f3
+PARTITION OF public.employees1
+FOR VALUES IN ('d007', 'd008', 'd006', 'd003');
+
+INSERT INTO public.employees1
+SELECT * FROM public.employees;
+
+VACUUM ANALYZE public.employees1_f1;
+
+VACUUM ANALYZE public.employees1_f2;
+
+VACUUM ANALYZE public.employees1_f3;
+
+ANALYZE public.employees1;
+
+SELECT
+    tableoid::regclass AS fragmento,
+    COUNT(*) AS cantidad_registros
+FROM public.employees1
+GROUP BY tableoid
+ORDER BY fragmento;
+
+-- 1.4
+SET max_parallel_workers_per_gather = 0;
+SET jit = off;
+SET enable_partition_pruning = on;
+
+-- Q1
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees
+WHERE dept_no = 'd001';
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees1
+WHERE dept_no = 'd001';
+
+-- Q2
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees
+WHERE dept_no IN ('d001', 'd005');
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees1
+WHERE dept_no IN ('d001', 'd005');
+
+-- Q3
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees
+WHERE last_name = 'Facello';
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees1
+WHERE last_name = 'Facello';
+
+SET enable_partition_pruning = off;
+
+-- Q4:
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees
+WHERE dept_no = 'd001';
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM public.employees1
+WHERE dept_no = 'd001';
+
+SET enable_partition_pruning = on;
+
+-- Q5:
+INSERT INTO public.employees1 (
+    emp_no, birth_date, first_name, last_name,
+    gender, hire_date, dept_no, from_date
+)
+VALUES (
+    -10010, '1990-01-01', 'Prueba', 'Laboratorio',
+    'M', '2026-01-01', 'd010', '2026-01-01'
+);
+
+CREATE TABLE public.employees1_default
+PARTITION OF public.employees1
+DEFAULT;
+
+SELECT
+    tableoid::regclass AS fragmento,
+    emp_no,
+    dept_no
+FROM public.employees1
+WHERE emp_no = -10010
+  AND dept_no = 'd010';
+
+-- P1.5:
+
+SET max_parallel_workers_per_gather = 0;
+SET jit = off;
+SET enable_partition_pruning = on;
+
+CREATE TABLE public.employees1_mal (
+    LIKE public.employees
+)
+PARTITION BY LIST (dept_no);
+
+CREATE TABLE public.mal_grande
+PARTITION OF public.employees1_mal
+FOR VALUES IN (
+    'd005', 'd004', 'd009', 'd001', 'd003', 'd002'
+);
+
+CREATE TABLE public.mal_pequeno1
+PARTITION OF public.employees1_mal
+FOR VALUES IN ('d007');
+
+CREATE TABLE public.mal_pequeno2
+PARTITION OF public.employees1_mal
+FOR VALUES IN ('d008', 'd006');
+
+INSERT INTO public.employees1_mal
+SELECT * FROM public.employees;
+
+VACUUM ANALYZE public.mal_grande;
+
+VACUUM ANALYZE public.mal_pequeno1;
+
+VACUUM ANALYZE public.mal_pequeno2;
+
+
+
+
+-- =====================================================================
 -- Parte 2
 -- =====================================================================
 
