@@ -194,8 +194,90 @@ VACUUM ANALYZE public.mal_pequeno1;
 
 VACUUM ANALYZE public.mal_pequeno2;
 
+SELECT
+    tableoid::regclass AS fragmento,
+    COUNT(*) AS registros
+FROM public.employees1_mal
+GROUP BY tableoid
+ORDER BY registros DESC;
 
+-- Q1 antes del rebalanceo.
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT *
+FROM public.employees1_mal
+WHERE dept_no = 'd001';
 
+BEGIN;
+
+ALTER TABLE public.employees1_mal
+DETACH PARTITION public.mal_grande;
+
+CREATE TABLE public.mal_grande_a
+PARTITION OF public.employees1_mal
+FOR VALUES IN ('d005', 'd001', 'd002');
+
+CREATE TABLE public.mal_grande_b
+PARTITION OF public.employees1_mal
+FOR VALUES IN ('d004', 'd009', 'd003');
+
+INSERT INTO public.employees1_mal
+SELECT * FROM public.mal_grande;
+
+DROP TABLE public.mal_grande;
+
+ALTER TABLE public.employees1_mal
+DETACH PARTITION public.mal_pequeno1;
+
+ALTER TABLE public.employees1_mal
+DETACH PARTITION public.mal_pequeno2;
+
+CREATE TABLE public.mal_combinado
+PARTITION OF public.employees1_mal
+FOR VALUES IN ('d007', 'd008', 'd006');
+
+INSERT INTO public.employees1_mal
+SELECT * FROM public.mal_pequeno1;
+
+INSERT INTO public.employees1_mal
+SELECT * FROM public.mal_pequeno2;
+
+DROP TABLE public.mal_pequeno1;
+DROP TABLE public.mal_pequeno2;
+
+COMMIT;
+
+VACUUM ANALYZE public.mal_grande_a;
+
+VACUUM ANALYZE public.mal_grande_b;
+
+VACUUM ANALYZE public.mal_combinado;
+
+ANALYZE public.employees1_mal;
+
+SELECT
+    tableoid::regclass AS fragmento,
+    COUNT(*) AS registros
+FROM public.employees1_mal
+GROUP BY tableoid
+ORDER BY registros DESC;
+
+-- Q1 después del rebalanceo.
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT *
+FROM public.employees1_mal
+WHERE dept_no = 'd001';
+
+-- Prueba de concurrencia
+BEGIN;
+
+ALTER TABLE public.employees1_mal
+DETACH PARTITION public.mal_grande_a;
+
+--en otra sesion
+SELECT COUNT(*)
+FROM public.employees1_mal;
+
+ROLLBACK;
 
 -- =====================================================================
 -- Parte 2
